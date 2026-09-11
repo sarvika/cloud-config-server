@@ -1,0 +1,114 @@
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: git,vault,awssecrets,awsparameterstore
+
+  security:
+    user:
+      name: ${SECURITY_USERNAME:root}
+      # No demo fallback: a Basic Auth password gating access to Vault/AWS/DB/Git secrets
+      # must never silently default to a known, documented value. Set SECURITY_PASSWORD
+      # explicitly, even for local runs.
+      password: ${SECURITY_PASSWORD}
+
+aws:
+  secretsmanager:
+    # Defaults to empty, meaning "use real AWS" (the SDK resolves the correct regional
+    # endpoint on its own). Only local runs against Moto (or another mock) need to set
+    # this to something like http://localhost:5000.
+    endpoint: ${AWS_SECRETSMANAGER_ENDPOINT:}
+    # No demo fallback: there is no universally-correct region to assume, and guessing
+    # wrong wouldn't necessarily fail loudly - a shared AWS account could have an
+    # unrelated, coincidentally-same-named secret in whatever region got silently
+    # assumed. Startup fails with a clear "could not resolve placeholder" error if
+    # AWS_SECRETSMANAGER_REGION isn't set.
+    region: ${AWS_SECRETSMANAGER_REGION}
+    # Defaults to "default" (the AWS SDK's standard credential chain - IAM role,
+    # instance/container metadata, etc.), NOT "static": a real deployment should never
+    # need to opt out of this. Unlike the other defaults on this page, this one *is* the
+    # objectively correct choice for a real deployment, not a demo convenience - so unlike
+    # them, it's fine to default. "static" + access-key/secret-key below exist only for
+    # local runs against Moto (which doesn't validate credentials); AwsSecretsManagerConfig
+    # enforces both are actually set whenever "static" is chosen.
+    credentials-provider: ${AWS_SECRETSMANAGER_CREDENTIALS_PROVIDER:default}
+    access-key: ${AWS_SECRETSMANAGER_ACCESS_KEY:}
+    secret-key: ${AWS_SECRETSMANAGER_SECRET_KEY:}
+    # Bound so a slow/unreachable Secrets Manager can't hang the whole merged
+    # environment response - see AwsSecretsManagerEnvironmentRepository.
+    api-call-attempt-timeout: ${AWS_SECRETSMANAGER_API_CALL_ATTEMPT_TIMEOUT:2s}
+    api-call-timeout: ${AWS_SECRETSMANAGER_API_CALL_TIMEOUT:3s}
+  parameterstore:
+    # Same defaulting rationale as aws.secretsmanager above - see those comments.
+    endpoint: ${AWS_PARAMETERSTORE_ENDPOINT:}
+    region: ${AWS_PARAMETERSTORE_REGION}
+    credentials-provider: ${AWS_PARAMETERSTORE_CREDENTIALS_PROVIDER:default}
+    access-key: ${AWS_PARAMETERSTORE_ACCESS_KEY:}
+    secret-key: ${AWS_PARAMETERSTORE_SECRET_KEY:}
+    api-call-attempt-timeout: ${AWS_PARAMETERSTORE_API_CALL_ATTEMPT_TIMEOUT:2s}
+    api-call-timeout: ${AWS_PARAMETERSTORE_API_CALL_TIMEOUT:3s}
+
+server:
+  port: ${SERVER_PORT:8889}
+
+---
+# Scoped to the "git" profile as its own YAML document (not just under a Java @Profile
+# bean) so that when "git" isn't active, spring.cloud.config.server.git.uri doesn't exist
+# in the environment at all - not even as an unresolved placeholder. That matters because
+# Spring Cloud Config Server's own internal Vault auto-configuration below has exactly
+# this problem when its properties live in the always-active document (see the vault
+# document's comment); keeping git's properties profile-scoped from the start avoids ever
+# hitting the same issue here.
+spring:
+  config:
+    activate:
+      on-profile: git
+  cloud:
+    config:
+      server:
+        git:
+          # No demo fallback: a real deployment must point at its own git remote, never
+          # silently at the repo bundled for local demos. Startup fails with a clear
+          # "could not resolve placeholder" error if GIT_REPO_URI isn't set.
+          uri: ${GIT_REPO_URI}
+          order: 4
+
+---
+# Scoped to the "vault" profile as its own YAML document - this is a real fix, not just
+# tidiness: Spring Cloud Config Server's own VaultConfiguration.vaultConfigTokenProvider
+# bean reads spring.cloud.config.server.vault.token as part of its own condition check
+# UNCONDITIONALLY, regardless of whether "vault" is an active profile. When that property
+# lived in the always-active document with an unresolved ${VAULT_TOKEN} placeholder, this
+# server refused to start even in an environment that only wants Git and/or AWS Secrets
+# Manager and never wanted Vault at all. Scoping this whole block to the "vault" profile
+# means the property doesn't exist in the environment unless "vault" is actually active,
+# so that condition check has nothing to fail on.
+spring:
+  config:
+    activate:
+      on-profile: vault
+  cloud:
+    config:
+      server:
+        vault:
+          # No demo fallback: there is no "correct" real Vault host/port/scheme to assume.
+          # Startup fails with a clear "could not resolve placeholder" error if these
+          # aren't set - for local dev (OpenBao via docker-compose), set 127.0.0.1/18200/http.
+          # (host/scheme are also enforced eagerly by VaultConnectorRequiredProperties -
+          # see that class for why String-typed properties need the extra push.)
+          host: ${VAULT_HOST}
+          port: ${VAULT_PORT}
+          scheme: ${VAULT_SCHEME}
+          backend: ${VAULT_BACKEND:secret}
+          kv-version: ${VAULT_KV_VERSION:2}
+          # TOKEN is the only auth method actually wired up end to end today - AppRole,
+          # Kubernetes, etc. would each need their own dedicated properties (role-id,
+          # secret-id, ...), not just a different string here, so this isn't exposed as a
+          # configurable env var to avoid implying support that doesn't exist yet.
+          authentication: TOKEN
+          # No demo fallback: a real Vault token must never silently default to the
+          # OpenBao dev-mode root token. Startup fails with a clear "could not resolve
+          # placeholder" error if VAULT_TOKEN isn't set - for local dev (OpenBao), set it
+          # to "root".
+          token: ${VAULT_TOKEN}
+          order: 1

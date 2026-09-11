@@ -1,0 +1,21 @@
+services:
+  openbao:
+    image: openbao/openbao:latest
+    container_name: config-server-openbao
+    ports:
+      - "18200:8200"
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: root
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    command: ["server", "-dev"]
+
+  # Open-source AWS mock (no license/token required), used in place of LocalStack
+  # since LocalStack's `latest` image now requires a paid auth token even for
+  # core services like Secrets Manager.
+  moto:
+    image: motoserver/moto:latest
+    container_name: config-server-moto
+    ports:
+      - "5000:5000"
