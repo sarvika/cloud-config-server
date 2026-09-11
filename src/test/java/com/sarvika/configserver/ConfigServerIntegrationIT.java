@@ -36,9 +36,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - the same thing verified manually, by hand, dozens of times over the course of this
  * project. This is that verification made permanent.
  *
- * Deliberately separate from the fast mocked unit tests (*Test.java, run by surefire during
- * `mvn test`, on every push): this class is named *IT.java and only runs during `mvn verify`
- * (via failsafe), since it needs Docker and takes meaningfully longer.
+ * Deliberately separate from the fast mocked unit tests (*Test.java, run by the plain `test`
+ * task on every push): this class is named *IT.java and only runs via the dedicated
+ * `integrationTest` Gradle task (see build.gradle.kts), since it needs Docker and takes
+ * meaningfully longer.
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)

@@ -82,7 +82,7 @@ AWS Secrets Manager and AWS Parameter Store are deliberately separate connectors
    AWS_PARAMETERSTORE_REGION=us-east-1 \
    AWS_PARAMETERSTORE_CREDENTIALS_PROVIDER=static \
    AWS_PARAMETERSTORE_ACCESS_KEY=test AWS_PARAMETERSTORE_SECRET_KEY=test \
-   mvn spring-boot:run
+   ./gradlew bootRun
    ```
    Listens on `:8889`, Basic Auth `root` / `labpassword` (override the username via `SECURITY_USERNAME`). None of these has an insecure or demo-pointing default baked into `application.yml` on purpose — see [Environment variables](#environment-variables) below for why, and what a real deployment needs to set instead.
 
@@ -142,7 +142,7 @@ curl http://localhost:8889/actuator/health
 
 Two tiers, run at different points:
 
-- **`mvn test`** — fast, mocked unit tests (`*Test.java`, run by Surefire). Mocks the AWS SDK clients directly; no Docker, no network. Runs on every push (`test` job in CI).
-- **`mvn verify`** — the same unit tests, plus `ConfigServerIntegrationIT` (`*IT.java`, run by Failsafe): boots the real Spring application against **real** OpenBao and Moto containers via [Testcontainers](https://testcontainers.com/), seeds them exactly like the manual walkthrough above, and asserts the full 4-connector merge resolves with correct precedence — then stops the Vault container mid-test and asserts the response still succeeds with just Vault's contribution missing, proving the resiliency behavior (see `ResilientEnvironmentRepositoryConfig`) against a real backend outage, not a mock. Needs Docker; runs in its own `integration-test` CI job and gates the GHCR publish alongside `test`.
+- **`./gradlew test`** — fast, mocked unit tests (`*Test.java`). Mocks the AWS SDK clients directly; no Docker, no network. Runs on every push (`test` job in CI).
+- **`./gradlew integrationTest`** — `ConfigServerIntegrationIT` (`*IT.java`, a dedicated Gradle task — see `build.gradle.kts`): boots the real Spring application against **real** OpenBao and Moto containers via [Testcontainers](https://testcontainers.com/), seeds them exactly like the manual walkthrough above, and asserts the full 4-connector merge resolves with correct precedence — then stops the Vault container mid-test and asserts the response still succeeds with just Vault's contribution missing, proving the resiliency behavior (see `ResilientEnvironmentRepositoryConfig`) against a real backend outage, not a mock. Needs Docker; runs in its own `integration-test` CI job and gates the GHCR publish alongside `test`.
 
 Both are required to pass before `build-and-push` runs, on every push to `main`.

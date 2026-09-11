@@ -25,10 +25,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: maven
+          cache: gradle
 
       - name: Run tests
-        run: mvn -B test
+        run: ./gradlew test
 
   integration-test:
     runs-on: ubuntu-latest
@@ -44,7 +44,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: maven
+          cache: gradle
 
       # Runs *IT.java (ConfigServerIntegrationIT) against real containers - actual OpenBao
       # and Moto instances via Testcontainers, not mocks - proving the whole
@@ -52,7 +52,7 @@ jobs:
       # backend goes down mid-request. GitHub-hosted runners have Docker preinstalled and
       # running, so Testcontainers needs no extra setup here.
       - name: Run integration tests (Testcontainers)
-        run: mvn -B verify -Dsurefire.skip=true
+        run: ./gradlew integrationTest
 
   build-and-push:
     needs: [test, integration-test]

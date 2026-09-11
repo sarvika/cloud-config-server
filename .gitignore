@@ -1,3 +1,9 @@
-target/
+build/
+.gradle/
 *.log
 .idea/
+
+# Local-machine-only Gradle toolchain override (e.g. a non-standard JDK install path) -
+# never portable, never committed. The Docker build doesn't need one: its base image's
+# own JDK 17 already satisfies the toolchain directly.
+gradle.properties
