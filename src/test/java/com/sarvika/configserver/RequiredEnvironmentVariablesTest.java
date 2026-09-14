@@ -1,10 +1,14 @@
 package com.sarvika.configserver;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -178,6 +182,89 @@ class RequiredEnvironmentVariablesTest {
 		};
 		try (ConfigurableApplicationContext context = boot(args)) {
 			// no GIT_REPO_URI/AWS_* supplied at all - no exception during boot() is the assertion
+		}
+	}
+
+	// Points VAULT_KUBERNETES_TOKEN_FILE at a real temp file - the default path doesn't
+	// exist locally, and this test only cares about the role-presence check.
+	@Test
+	void startsWithKubernetesAuthAndRoleNoVaultTokenNeeded(@TempDir Path tempDir) throws IOException {
+		Path fakeToken = tempDir.resolve("fake-service-account-token");
+		Files.writeString(fakeToken, "fake-token-for-test");
+		String[] args = {
+				"--server.port=0",
+				"--spring.profiles.active=vault",
+				"--SECURITY_PASSWORD=test",
+				"--VAULT_HOST=127.0.0.1",
+				"--VAULT_PORT=18200",
+				"--VAULT_SCHEME=http",
+				"--VAULT_AUTHENTICATION_METHOD=KUBERNETES",
+				"--VAULT_KUBERNETES_ROLE=config-server",
+				"--VAULT_KUBERNETES_TOKEN_FILE=" + fakeToken,
+		};
+		try (ConfigurableApplicationContext context = boot(args)) {
+			// no VAULT_TOKEN supplied at all - no exception during boot() is the assertion
+		}
+	}
+
+	@Test
+	void failsWithKubernetesAuthButNoRole() {
+		String[] args = {
+				"--server.port=0",
+				"--spring.profiles.active=vault",
+				"--SECURITY_PASSWORD=test",
+				"--VAULT_HOST=127.0.0.1",
+				"--VAULT_PORT=18200",
+				"--VAULT_SCHEME=http",
+				"--VAULT_AUTHENTICATION_METHOD=KUBERNETES",
+		};
+		assertThatThrownBy(() -> boot(args));
+	}
+
+	@Test
+	void failsWithUnsupportedButOtherwiseValidAuthenticationMethod() {
+		// APPROLE is a real enum value this project doesn't wire properties for.
+		String[] args = {
+				"--server.port=0",
+				"--spring.profiles.active=vault",
+				"--SECURITY_PASSWORD=test",
+				"--VAULT_HOST=127.0.0.1",
+				"--VAULT_PORT=18200",
+				"--VAULT_SCHEME=http",
+				"--VAULT_AUTHENTICATION_METHOD=APPROLE",
+		};
+		assertThatThrownBy(() -> boot(args));
+	}
+
+	@Test
+	void failsWithUnrecognizedAuthenticationMethod() {
+		String[] args = {
+				"--server.port=0",
+				"--spring.profiles.active=vault",
+				"--SECURITY_PASSWORD=test",
+				"--VAULT_HOST=127.0.0.1",
+				"--VAULT_PORT=18200",
+				"--VAULT_SCHEME=http",
+				"--VAULT_AUTHENTICATION_METHOD=not-a-real-method",
+		};
+		assertThatThrownBy(() -> boot(args));
+	}
+
+	// Confirms lowercase input works end-to-end, not just against our own normalization.
+	@Test
+	void startsWithLowercaseAuthenticationMethod() {
+		String[] args = {
+				"--server.port=0",
+				"--spring.profiles.active=vault",
+				"--SECURITY_PASSWORD=test",
+				"--VAULT_HOST=127.0.0.1",
+				"--VAULT_PORT=18200",
+				"--VAULT_SCHEME=http",
+				"--VAULT_AUTHENTICATION_METHOD=token",
+				"--VAULT_TOKEN=root",
+		};
+		try (ConfigurableApplicationContext context = boot(args)) {
+			// lowercase "token" instead of "TOKEN" - no exception during boot() is the assertion
 		}
 	}
 

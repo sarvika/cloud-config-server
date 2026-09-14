@@ -101,14 +101,14 @@ spring:
           scheme: ${VAULT_SCHEME}
           backend: ${VAULT_BACKEND:secret}
           kv-version: ${VAULT_KV_VERSION:2}
-          # TOKEN is the only auth method actually wired up end to end today - AppRole,
-          # Kubernetes, etc. would each need their own dedicated properties (role-id,
-          # secret-id, ...), not just a different string here, so this isn't exposed as a
-          # configurable env var to avoid implying support that doesn't exist yet.
-          authentication: TOKEN
-          # No demo fallback: a real Vault token must never silently default to the
-          # OpenBao dev-mode root token. Startup fails with a clear "could not resolve
-          # placeholder" error if VAULT_TOKEN isn't set - for local dev (OpenBao), set it
-          # to "root".
-          token: ${VAULT_TOKEN}
+          # KUBERNETES: authenticate as this pod's own ServiceAccount instead of a
+          # static token - see VaultAuthMethodRequiredProperties.
+          authentication: ${VAULT_AUTHENTICATION_METHOD:TOKEN}
+          # Empty (not absent) - only required when authentication=TOKEN.
+          token: ${VAULT_TOKEN:}
+          kubernetes:
+            kubernetes-path: ${VAULT_KUBERNETES_AUTH_PATH:kubernetes}
+            # Only required when authentication=KUBERNETES.
+            role: ${VAULT_KUBERNETES_ROLE:}
+            service-account-token-file: ${VAULT_KUBERNETES_TOKEN_FILE:/var/run/secrets/kubernetes.io/serviceaccount/token}
           order: 1
