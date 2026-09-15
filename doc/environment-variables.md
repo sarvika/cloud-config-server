@@ -1,0 +1,33 @@
+# Environment variables
+
+Every backend connection detail is externalized so the same image is generic across environments and services — nothing environment-specific is baked in, only overridden via env vars, and **no default points at localhost, Moto, or the bundled demo git repo**. Variables marked **required** have *no* fallback: the app fails fast at startup with a clear "could not resolve placeholder" error rather than silently running against a local demo backend or a known credential.
+
+**Connectors are independent of each other.** Only run `awssecrets`? Only need Vault, no Git or AWS at all? `SPRING_PROFILES_ACTIVE` controls which connectors are active (default `git,vault,awssecrets,awsparameterstore`) — drop whichever ones you don't want, and that connector's required variables aren't required at all. For example, `SPRING_PROFILES_ACTIVE=awssecrets` with none of the `GIT_REPO_URI`/`VAULT_*`/`AWS_PARAMETERSTORE_*` variables set starts up fine.
+
+| Variable | Required? | Local demo value | What it controls |
+|---|---|---|---|
+| `SECURITY_USERNAME` | no (defaults to `root`) | `root` | Basic Auth username for every client of this server |
+| `SECURITY_PASSWORD` | **yes** | `labpassword` | Basic Auth password — no default, ever |
+| `GIT_REPO_URI` | **yes** (while `git` is an active profile) | `file:///tmp/demo-git-repo` | Git connector remote (any URI JGit supports: `https://`, `ssh://`, `file:`) — no default, and a dedicated startup check enforces this (see `GitConnectorRequiredProperties`); Spring's own `spring.cloud.config.server.git.uri` binding alone would otherwise silently accept the unresolved placeholder and only fail on the first client request with a confusing 404 |
+| `VAULT_HOST` / `VAULT_SCHEME` | **yes** (while `vault` is an active profile) | `127.0.0.1` / `http` | Vault/OpenBao network location — no default, and a dedicated startup check enforces this (see `VaultConnectorRequiredProperties`), for the same reason `GIT_REPO_URI` needs one: these are String properties that would otherwise silently tolerate an unresolved placeholder until first use |
+| `VAULT_PORT` | **yes** (while `vault` is an active profile) | `18200` | Vault/OpenBao port — no default; this one fails fast "for free" since it's bound as an `Integer` |
+| `VAULT_BACKEND` / `VAULT_KV_VERSION` | no | `secret` / `2` | Vault backend mount, KV engine version — protocol conventions, not environment-specific, so a default is safe here |
+| `VAULT_AUTHENTICATION_METHOD` | no (defaults to `TOKEN`) | `TOKEN` | `TOKEN` (static token, works anywhere) or `KUBERNETES` (authenticate as this pod's own ServiceAccount instead — see `VaultAuthMethodRequiredProperties`). Any other value fails startup rather than being silently accepted |
+| `VAULT_TOKEN` | **yes, if and only if** `VAULT_AUTHENTICATION_METHOD=TOKEN` (the default) | `root` | Vault/OpenBao auth token — no default, ever. Scoped to its own profile-activated document in `application.yml` so it isn't required at all when `vault` isn't active |
+| `VAULT_KUBERNETES_ROLE` | **yes, if and only if** `VAULT_AUTHENTICATION_METHOD=KUBERNETES` | — | The OpenBao Kubernetes-auth role bound to this pod's ServiceAccount + namespace |
+| `VAULT_KUBERNETES_AUTH_PATH` | no (defaults to `kubernetes`) | — | OpenBao's Kubernetes auth mount path; rarely needs overriding |
+| `VAULT_KUBERNETES_TOKEN_FILE` | no (defaults to the standard projected path) | — | Path to this pod's own ServiceAccount token file |
+| `AWS_SECRETSMANAGER_ENDPOINT` | no (defaults to empty = real AWS) | `http://localhost:5000` | AWS Secrets Manager endpoint override — the SDK resolves the correct real endpoint on its own when this is unset; only set it for a local mock |
+| `AWS_SECRETSMANAGER_REGION` | **yes** | `us-east-1` | AWS region — no default: guessing wrong wouldn't necessarily fail loudly, since a shared AWS account could have an unrelated, coincidentally-same-named secret sitting in whatever region got silently assumed |
+| `AWS_SECRETSMANAGER_CREDENTIALS_PROVIDER` | no (defaults to `default`) | `static` | `default` uses the AWS SDK's standard credential chain (IAM role, instance metadata, etc.) — unlike every other default on this page, this *is* the objectively correct choice for a real deployment, not a demo convenience, so it's fine to default. `static` + the two variables below exist only for local runs against Moto. Any other value (including a typo) fails startup rather than silently falling back to `static` |
+| `AWS_SECRETSMANAGER_ACCESS_KEY` / `_SECRET_KEY` | **yes, if and only if** `_CREDENTIALS_PROVIDER=static` | `test` / `test` | Static AWS credentials — not read at all (and not required) when using `default`; if `static` is chosen, both must be set or startup fails |
+| `AWS_SECRETSMANAGER_API_CALL_ATTEMPT_TIMEOUT` / `_API_CALL_TIMEOUT` | no (default `2s` / `3s`) | `2s` / `3s` | Per-attempt / total SDK call timeout, so a slow Secrets Manager can't hang the whole merged response |
+| `AWS_PARAMETERSTORE_ENDPOINT` | no (defaults to empty = real AWS) | `http://localhost:5000` | AWS Parameter Store (SSM) endpoint override — leave unset for real AWS, same as its Secrets Manager equivalent |
+| `AWS_PARAMETERSTORE_REGION` | **yes** | `us-east-1` | AWS region — same "no safe default" reasoning as `AWS_SECRETSMANAGER_REGION` |
+| `AWS_PARAMETERSTORE_CREDENTIALS_PROVIDER` | no (defaults to `default`) | `static` | Same semantics as `AWS_SECRETSMANAGER_CREDENTIALS_PROVIDER` — `default` is the correct choice for a real deployment; `static` is for local Moto runs only, and any other value fails startup |
+| `AWS_PARAMETERSTORE_ACCESS_KEY` / `_SECRET_KEY` | **yes, if and only if** `_CREDENTIALS_PROVIDER=static` | `test` / `test` | Static AWS credentials, same rules as the Secrets Manager pair |
+| `AWS_PARAMETERSTORE_API_CALL_ATTEMPT_TIMEOUT` / `_API_CALL_TIMEOUT` | no (default `2s` / `3s`) | `2s` / `3s` | Per-attempt / total SDK call timeout for Parameter Store calls |
+| `SERVER_PORT` | no (defaults to `8889`) | `8889` | HTTP port (the Dockerfile's `EXPOSE 8889` is documentation only — if you override this, update your port mapping/health probe to match) |
+| `SPRING_PROFILES_ACTIVE` | no (defaults to `git,vault,awssecrets,awsparameterstore`) | `git,vault,awssecrets,awsparameterstore` | Standard Spring Boot variable — which connectors are active at all. Drop `awssecrets` and/or `awsparameterstore` from the list to disable either AWS connector independently, for example |
+
+For a real deployment, TLS termination (this server has none built in) and per-client credential scoping (today it's one shared Basic Auth credential for every consumer) are still open questions to settle with whoever owns your security posture before other services depend on this.
